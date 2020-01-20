@@ -4,11 +4,13 @@ import (
 	"fmt"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+	"os"
 	"testing"
 	"time"
 )
 
 func init() {
+	os.Setenv("KUBE_PODNAME", "kubepod")
 	InitLogger(WithServiceName("data"), WithLogPath("../"))
 }
 

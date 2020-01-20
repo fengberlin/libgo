@@ -73,6 +73,8 @@ func NewLogger(opts ...Option) (*zap.Logger, zap.AtomicLevel) {
 		writeSyncer := NewWriteSyncer(os.Stderr)
 		logCores = []zapcore.Core{zapcore.NewCore(encoder, writeSyncer, atomicLevel)}
 	} else {
+		// k8s pod name
+		podName := os.Getenv("KUBE_PODNAME")
 		encoder = zapcore.NewJSONEncoder(encoderConfig)
 		levelEnablerFuncMap := levelAndAbove(atomicLevel.Level()).EnableLevels()
 		logCores = make([]zapcore.Core, 0, len(levelEnablerFuncMap))
@@ -82,7 +84,12 @@ func NewLogger(opts ...Option) (*zap.Logger, zap.AtomicLevel) {
 			if err != nil {
 				panic(errors.Wrap(err, "error make directory"))
 			}
-			pattern := filepath.Join(logOpts.logPath, logOpts.serviceName, level.String()+".%Y-%m-%d.log")
+			var pattern string
+			if podName != "" {
+				pattern = filepath.Join(logOpts.logPath, podName, logOpts.serviceName, level.String()+".%Y-%m-%d.log")
+			} else {
+				pattern = filepath.Join(logOpts.logPath, logOpts.serviceName, level.String()+".%Y-%m-%d.log")
+			}
 			fileWriter, err := rotatelogs.New(pattern,
 				rotatelogs.WithMaxAge(logOpts.fileRotateMaxAge),
 				rotatelogs.WithRotationTime(logOpts.fileRotationTime))
