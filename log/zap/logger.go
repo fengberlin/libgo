@@ -54,6 +54,10 @@ func NewWriteSyncer(writer io.Writer) zapcore.WriteSyncer {
 }
 
 // NewLogger new a zap logger and return its atomic level
+// If the logPath is empty (use WithLogPath) or the
+// development (use Development) is set, the logger will
+// write log to os.stderr. In production, you have better
+// specify the serviceName(use WithServiceName).
 func NewLogger(opts ...Option) (*zap.Logger, zap.AtomicLevel) {
 	logOpts := defaultLogOptions
 	for i := 0; i < len(opts); i++ {
@@ -63,7 +67,7 @@ func NewLogger(opts ...Option) (*zap.Logger, zap.AtomicLevel) {
 	encoderConfig := NewEncoderConfig()
 	var encoder zapcore.Encoder
 	var logCores []zapcore.Core
-	if logOpts.serviceName == "" || logOpts.logPath == "" || logOpts.development == true {
+	if logOpts.logPath == "" || logOpts.development == true {
 		encoderConfig.EncodeLevel = zapcore.LowercaseColorLevelEncoder
 		encoder = zapcore.NewConsoleEncoder(encoderConfig)
 		writeSyncer := NewWriteSyncer(os.Stderr)
@@ -71,11 +75,12 @@ func NewLogger(opts ...Option) (*zap.Logger, zap.AtomicLevel) {
 	} else {
 		encoder = zapcore.NewJSONEncoder(encoderConfig)
 		levelEnablerFuncMap := levelAndAbove(atomicLevel.Level()).EnableLevels()
+		logCores = make([]zapcore.Core, 0, len(levelEnablerFuncMap))
 		var err error
 		for level, levelEnablerFunc := range levelEnablerFuncMap {
 			err = os.MkdirAll(filepath.Join(logOpts.logPath, logOpts.serviceName), 0755)
 			if err != nil {
-				panic(errors.Wrap(err, "error mkdir"))
+				panic(errors.Wrap(err, "error make directory"))
 			}
 			pattern := filepath.Join(logOpts.logPath, logOpts.serviceName, level.String()+".%Y-%m-%d.log")
 			fileWriter, err := rotatelogs.New(pattern,
@@ -88,10 +93,6 @@ func NewLogger(opts ...Option) (*zap.Logger, zap.AtomicLevel) {
 			logCores = append(logCores, zapcore.NewCore(encoder, writeSyncer, levelEnablerFunc))
 		}
 	}
-	//newLogger := zap.New(zapcore.NewTee(logCore), zap.AddCallerSkip(2), zap.AddCaller(), zap.AddStacktrace(zapcore.ErrorLevel),
-	//	zap.WrapCore(func(core zapcore.Core) zapcore.Core {
-	//		return zapcore.NewSampler(core, time.Second, 100, 100)
-	//	}))
 	newLogger := zap.New(zapcore.NewTee(logCores...), zap.AddCallerSkip(1), zap.AddCaller(), zap.AddStacktrace(zapcore.ErrorLevel))
 	return newLogger, atomicLevel
 }
@@ -113,7 +114,7 @@ func InitLogger(opts ...Option) {
 }
 
 // ChangeLoggerLevel will atomically change the log level
-func ChangeLoggerLevel(lvl zapcore.Level) {
+func SetLoggerLevel(lvl zapcore.Level) {
 	atomicLevel.SetLevel(lvl)
 }
 
@@ -176,36 +177,36 @@ func Fatal(msg string, fields ...zap.Field) {
 // When the template is empty string, the Debug method will be used
 func Debugf(template string, args ...interface{}) {
 	if template == "" {
-		sugaredLogger.Debug(args)
+		sugaredLogger.Debug(args...)
 	}
-	sugaredLogger.Debugf(template, args)
+	sugaredLogger.Debugf(template, args...)
 }
 
 // Infof uses fmt.Sprintf to log a templated message.
 // When the template is empty string, the Info method will be used
 func Infof(template string, args ...interface{}) {
 	if template == "" {
-		sugaredLogger.Info(args)
+		sugaredLogger.Info(args...)
 	}
-	sugaredLogger.Infof(template, args)
+	sugaredLogger.Infof(template, args...)
 }
 
 // Warnf uses fmt.Sprintf to log a templated message.
 // When the template is empty string, the Warn method will be used
 func Warnf(template string, args ...interface{}) {
 	if template == "" {
-		sugaredLogger.Warn(args)
+		sugaredLogger.Warn(args...)
 	}
-	sugaredLogger.Warnf(template, args)
+	sugaredLogger.Warnf(template, args...)
 }
 
 // Errorf uses fmt.Sprintf to log a templated message.
 // When the template is empty string, the Error method will be used
 func Errorf(template string, args ...interface{}) {
 	if template == "" {
-		sugaredLogger.Error(args)
+		sugaredLogger.Error(args...)
 	}
-	sugaredLogger.Errorf(template, args)
+	sugaredLogger.Errorf(template, args...)
 }
 
 // DPanicf uses fmt.Sprintf to log a templated message. In development, the
@@ -213,27 +214,27 @@ func Errorf(template string, args ...interface{}) {
 // When the template is empty string, the DPanic method will be used
 func DPanicf(template string, args ...interface{}) {
 	if template == "" {
-		sugaredLogger.DPanic(args)
+		sugaredLogger.DPanic(args...)
 	}
-	sugaredLogger.DPanicf(template, args)
+	sugaredLogger.DPanicf(template, args...)
 }
 
 // Panicf uses fmt.Sprintf to log a templated message, then panics.
 // When the template is empty string, the Panic method will be used
 func Panicf(template string, args ...interface{}) {
 	if template == "" {
-		sugaredLogger.Panic(args)
+		sugaredLogger.Panic(args...)
 	}
-	sugaredLogger.Panicf(template, args)
+	sugaredLogger.Panicf(template, args...)
 }
 
 // Fatalf uses fmt.Sprintf to log a templated message, then calls os.Exit.
 // When the template is empty string, the Fatal method will be used
 func Fatalf(template string, args ...interface{}) {
 	if template == "" {
-		sugaredLogger.Fatal(args)
+		sugaredLogger.Fatal(args...)
 	}
-	sugaredLogger.Fatalf(template, args)
+	sugaredLogger.Fatalf(template, args...)
 }
 
 // Debugw logs a message with some additional context. The variadic key-value
@@ -242,44 +243,44 @@ func Fatalf(template string, args ...interface{}) {
 // When debug-level logging is disabled, this is much faster than
 //  s.With(keysAndValues).Debug(msg)
 func Debugw(msg string, keysAndValues ...interface{}) {
-	sugaredLogger.Debugw(msg, keysAndValues)
+	sugaredLogger.Debugw(msg, keysAndValues...)
 }
 
 // Infow logs a message with some additional context. The variadic key-value
 // pairs are treated as they are in With.
 func Infow(msg string, keysAndValues ...interface{}) {
-	sugaredLogger.Infow(msg, keysAndValues)
+	sugaredLogger.Infow(msg, keysAndValues...)
 }
 
 // Warnw logs a message with some additional context. The variadic key-value
 // pairs are treated as they are in With.
 func Warnw(msg string, keysAndValues ...interface{}) {
-	sugaredLogger.Warnw(msg, keysAndValues)
+	sugaredLogger.Warnw(msg, keysAndValues...)
 }
 
 // Errorw logs a message with some additional context. The variadic key-value
 // pairs are treated as they are in With.
 func Errorw(msg string, keysAndValues ...interface{}) {
-	sugaredLogger.Errorw(msg, keysAndValues)
+	sugaredLogger.Errorw(msg, keysAndValues...)
 }
 
 // DPanicw logs a message with some additional context. In development, the
 // logger then panics. (See DPanicLevel for details.) The variadic key-value
 // pairs are treated as they are in With.
 func DPanicw(msg string, keysAndValues ...interface{}) {
-	sugaredLogger.DPanicw(msg, keysAndValues)
+	sugaredLogger.DPanicw(msg, keysAndValues...)
 }
 
 // Panicw logs a message with some additional context, then panics. The
 // variadic key-value pairs are treated as they are in With.
 func Panicw(msg string, keysAndValues ...interface{}) {
-	sugaredLogger.Panicw(msg, keysAndValues)
+	sugaredLogger.Panicw(msg, keysAndValues...)
 }
 
 // Fatalw logs a message with some additional context, then calls os.Exit. The
 // variadic key-value pairs are treated as they are in With.
 func Fatalw(msg string, keysAndValues ...interface{}) {
-	sugaredLogger.Fatalw(msg, keysAndValues)
+	sugaredLogger.Fatalw(msg, keysAndValues...)
 }
 
 // Sync calls the underlying Core's Sync method, flushing any buffered log

@@ -14,10 +14,10 @@ const (
 type levelAndAbove zapcore.Level
 
 func (l levelAndAbove) EnableLevels() map[zapcore.Level]zap.LevelEnablerFunc {
-	levels := GetLevels(zapcore.Level(l))
+	levels := getLevels(zapcore.Level(l))
 	m := make(map[zapcore.Level]zap.LevelEnablerFunc, len(levels))
 	for i := 0; i < len(levels); i++ {
-		// 注意这里的索引下标
+		// notify the index
 		idx := i
 		m[levels[idx]] = func(lvl zapcore.Level) bool {
 			return lvl == levels[idx]
@@ -26,8 +26,8 @@ func (l levelAndAbove) EnableLevels() map[zapcore.Level]zap.LevelEnablerFunc {
 	return m
 }
 
-// GetLevelNames get the enabled level names
-func GetLevels(lvl zapcore.Level) (enabledLevels []zapcore.Level) {
+// getLevels get the enabled level
+func getLevels(lvl zapcore.Level) (enabledLevels []zapcore.Level) {
 	if lvl < _minLevel || lvl > _maxLevel {
 		panic(errors.New("invalid log level"))
 	}
