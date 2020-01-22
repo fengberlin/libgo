@@ -2,7 +2,6 @@ package zaplog
 
 import (
 	"github.com/pkg/errors"
-	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -47,10 +46,16 @@ func NewEncoderConfig() zapcore.EncoderConfig {
 	}
 }
 
-// NewWriteSyncer create a zapcore.WriteSyncer,
-// the return zapcore.WriteSyncer is safe to concurrently to use
-func NewWriteSyncer(writer io.Writer) zapcore.WriteSyncer {
-	return zapcore.Lock(zapcore.AddSync(writer))
+type rotateFileWriter struct {
+	coreWriter *rotatelogs.RotateLogs
+}
+
+func (fw rotateFileWriter) Write(p []byte) (n int, err error) {
+	return fw.coreWriter.Write(p)
+}
+
+func (fw rotateFileWriter) Sync() error {
+	return fw.coreWriter.Close()
 }
 
 // NewLogger new a zap logger and return its atomic level
@@ -70,8 +75,7 @@ func NewLogger(opts ...Option) (*zap.Logger, zap.AtomicLevel) {
 	if logOpts.logPath == "" || logOpts.development == true {
 		encoderConfig.EncodeLevel = zapcore.LowercaseColorLevelEncoder
 		encoder = zapcore.NewConsoleEncoder(encoderConfig)
-		writeSyncer := NewWriteSyncer(os.Stderr)
-		logCores = []zapcore.Core{zapcore.NewCore(encoder, writeSyncer, atomicLevel)}
+		logCores = []zapcore.Core{zapcore.NewCore(encoder, os.Stderr, atomicLevel)}
 	} else {
 		// k8s pod name
 		podName := os.Getenv("KUBE_PODNAME")
@@ -80,27 +84,46 @@ func NewLogger(opts ...Option) (*zap.Logger, zap.AtomicLevel) {
 		logCores = make([]zapcore.Core, 0, len(levelEnablerFuncMap))
 		var err error
 		for level, levelEnablerFunc := range levelEnablerFuncMap {
-			err = os.MkdirAll(filepath.Join(logOpts.logPath, logOpts.serviceName), 0755)
+			err = os.MkdirAll(filepath.Join(logOpts.logPath, podName, logOpts.serviceName), 0755)
 			if err != nil {
 				panic(errors.Wrap(err, "error make directory"))
 			}
 			var pattern string
-			if podName != "" {
-				pattern = filepath.Join(logOpts.logPath, podName, logOpts.serviceName, level.String()+".%Y-%m-%d.log")
-			} else {
-				pattern = filepath.Join(logOpts.logPath, logOpts.serviceName, level.String()+".%Y-%m-%d.log")
-			}
+			pattern = filepath.Join(logOpts.logPath, podName, logOpts.serviceName, level.String()+".%Y-%m-%d.log")
+			//if podName != "" {
+			//
+			//} else {
+			//	pattern = filepath.Join(logOpts.logPath, logOpts.serviceName, level.String()+".%Y-%m-%d.log")
+			//}
 			fileWriter, err := rotatelogs.New(pattern,
 				rotatelogs.WithMaxAge(logOpts.fileRotateMaxAge),
 				rotatelogs.WithRotationTime(logOpts.fileRotationTime))
 			if err != nil {
 				panic(errors.Wrap(err, "error create file rotate writer"))
 			}
-			writeSyncer := NewWriteSyncer(fileWriter)
+			writeSyncer := zapcore.Lock(rotateFileWriter{coreWriter: fileWriter})
 			logCores = append(logCores, zapcore.NewCore(encoder, writeSyncer, levelEnablerFunc))
 		}
 	}
-	newLogger := zap.New(zapcore.NewTee(logCores...), zap.AddCallerSkip(1), zap.AddCaller(), zap.AddStacktrace(zapcore.ErrorLevel))
+	newLogger := zap.New(zapcore.NewTee(logCores...))
+	if logOpts.addCaller {
+		newLogger = newLogger.WithOptions(zap.AddCaller(), zap.AddCallerSkip(logOpts.callerSkip))
+	}
+	if logOpts.addStacktrace != nil {
+		newLogger = newLogger.WithOptions(zap.AddStacktrace(logOpts.addStacktrace))
+	}
+	if logOpts.wrapCoreFunc != nil {
+		newLogger = newLogger.WithOptions(zap.WrapCore(logOpts.wrapCoreFunc))
+	}
+	if len(logOpts.fields) != 0 {
+		newLogger = newLogger.WithOptions(zap.Fields(logOpts.fields...))
+	}
+	if len(logOpts.hooks) != 0 {
+		newLogger = newLogger.WithOptions(zap.Hooks(logOpts.hooks...))
+	}
+	if logOpts.errorOutput != nil {
+		newLogger = newLogger.WithOptions(zap.ErrorOutput(logOpts.errorOutput))
+	}
 	return newLogger, atomicLevel
 }
 
@@ -121,7 +144,7 @@ func InitLogger(opts ...Option) {
 }
 
 // ChangeLoggerLevel will atomically change the log level
-func SetLoggerLevel(lvl zapcore.Level) {
+func AtomicSetLoggerLevel(lvl zapcore.Level) {
 	atomicLevel.SetLevel(lvl)
 }
 
@@ -183,36 +206,24 @@ func Fatal(msg string, fields ...zap.Field) {
 // Debugf uses fmt.Sprintf to log a templated message.
 // When the template is empty string, the Debug method will be used
 func Debugf(template string, args ...interface{}) {
-	if template == "" {
-		sugaredLogger.Debug(args...)
-	}
 	sugaredLogger.Debugf(template, args...)
 }
 
 // Infof uses fmt.Sprintf to log a templated message.
 // When the template is empty string, the Info method will be used
 func Infof(template string, args ...interface{}) {
-	if template == "" {
-		sugaredLogger.Info(args...)
-	}
 	sugaredLogger.Infof(template, args...)
 }
 
 // Warnf uses fmt.Sprintf to log a templated message.
 // When the template is empty string, the Warn method will be used
 func Warnf(template string, args ...interface{}) {
-	if template == "" {
-		sugaredLogger.Warn(args...)
-	}
 	sugaredLogger.Warnf(template, args...)
 }
 
 // Errorf uses fmt.Sprintf to log a templated message.
 // When the template is empty string, the Error method will be used
 func Errorf(template string, args ...interface{}) {
-	if template == "" {
-		sugaredLogger.Error(args...)
-	}
 	sugaredLogger.Errorf(template, args...)
 }
 
@@ -220,27 +231,18 @@ func Errorf(template string, args ...interface{}) {
 // logger then panics. (See DPanicLevel for details.)
 // When the template is empty string, the DPanic method will be used
 func DPanicf(template string, args ...interface{}) {
-	if template == "" {
-		sugaredLogger.DPanic(args...)
-	}
 	sugaredLogger.DPanicf(template, args...)
 }
 
 // Panicf uses fmt.Sprintf to log a templated message, then panics.
 // When the template is empty string, the Panic method will be used
 func Panicf(template string, args ...interface{}) {
-	if template == "" {
-		sugaredLogger.Panic(args...)
-	}
 	sugaredLogger.Panicf(template, args...)
 }
 
 // Fatalf uses fmt.Sprintf to log a templated message, then calls os.Exit.
 // When the template is empty string, the Fatal method will be used
 func Fatalf(template string, args ...interface{}) {
-	if template == "" {
-		sugaredLogger.Fatal(args...)
-	}
 	sugaredLogger.Fatalf(template, args...)
 }
 

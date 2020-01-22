@@ -1,0 +1,1 @@
+{"level":"dpanic","ts":"2020-01-22T15:38:23.468+08:00","caller":"testing/testing.go:909","msg":"hello dpanic","stacktrace":"github.com/fengberlin/libgo/log/zap.DPanic\n\t/home/berlin/code/libgo/log/zap/logger.go:186\ngithub.com/fengberlin/libgo/log/zap.TestLogger\n\t/home/berlin/code/libgo/log/zap/logger_test.go:23\ntesting.tRunner\n\t/usr/local/go/src/testing/testing.go:909"}
