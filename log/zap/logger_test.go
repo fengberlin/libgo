@@ -12,6 +12,7 @@ func init() {
 	InitLogger(WithServiceName("data"), WithLogPath("../"), AddCallerSkip(1), AddCaller(), AddStacktrace(zapcore.ErrorLevel))
 }
 
+// check entry write error
 func TestLogger(t *testing.T) {
 	tick := time.Tick(time.Second * 2)
 	for {
