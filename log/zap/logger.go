@@ -46,18 +46,6 @@ func NewEncoderConfig() zapcore.EncoderConfig {
 	}
 }
 
-type rotateFileWriter struct {
-	coreWriter *rotatelogs.RotateLogs
-}
-
-func (fw rotateFileWriter) Write(p []byte) (n int, err error) {
-	return fw.coreWriter.Write(p)
-}
-
-func (fw rotateFileWriter) Sync() error {
-	return fw.coreWriter.Close()
-}
-
 // NewLogger new a zap logger and return its atomic level
 // If the logPath is empty (use WithLogPath) or the
 // development (use Development) is set, the logger will
@@ -90,22 +78,24 @@ func NewLogger(opts ...Option) (*zap.Logger, zap.AtomicLevel) {
 			}
 			var pattern string
 			pattern = filepath.Join(logOpts.logPath, podName, logOpts.serviceName, level.String()+".%Y-%m-%d.log")
-			//if podName != "" {
-			//
-			//} else {
-			//	pattern = filepath.Join(logOpts.logPath, logOpts.serviceName, level.String()+".%Y-%m-%d.log")
-			//}
 			fileWriter, err := rotatelogs.New(pattern,
 				rotatelogs.WithMaxAge(logOpts.fileRotateMaxAge),
 				rotatelogs.WithRotationTime(logOpts.fileRotationTime))
 			if err != nil {
 				panic(errors.Wrap(err, "error create file rotate writer"))
 			}
-			writeSyncer := zapcore.Lock(rotateFileWriter{coreWriter: fileWriter})
+			writeSyncer := zapcore.Lock(zapcore.AddSync(fileWriter))
 			logCores = append(logCores, zapcore.NewCore(encoder, writeSyncer, levelEnablerFunc))
 		}
 	}
-	newLogger := zap.New(zapcore.NewTee(logCores...))
+
+	var newLogger *zap.Logger
+	if logOpts.development {
+		newLogger = zap.New(zapcore.NewTee(logCores...), zap.Development())
+	} else {
+		newLogger = zap.New(zapcore.NewTee(logCores...))
+	}
+
 	if logOpts.addCaller {
 		newLogger = newLogger.WithOptions(zap.AddCaller(), zap.AddCallerSkip(logOpts.callerSkip))
 	}

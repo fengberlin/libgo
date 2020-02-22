@@ -1,0 +1,3 @@
+{"level":"debug","ts":"2020-02-22T23:26:52.273+08:00","caller":"testing/testing.go:909","msg":"hello debug","k":"v"}
+{"level":"debug","ts":"2020-02-22T23:26:59.607+08:00","caller":"testing/testing.go:909","msg":"hello debug","k":"v"}
+{"level":"debug","ts":"2020-02-22T23:27:08.197+08:00","caller":"testing/testing.go:909","msg":"hello debug","k":"v"}
